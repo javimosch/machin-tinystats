@@ -1,0 +1,111 @@
+// metrics.src — collect system metrics via exec() and serialize to JSON.
+// Reads free, df, df -i, and uptime — the same commands the original ministats uses.
+
+type Metrics struct {
+	name string
+	memAvail string
+	diskAvail string
+	diskUsed string
+	diskTotal string
+	diskPct int
+	inodePct int
+	load1 float
+	load5 float
+	load15 float
+	timestamp int
+}
+
+// collect_metrics runs the four system commands and parses their output.
+func collect_metrics(name) {
+	m := Metrics{}
+	m.name = name
+	m.timestamp = now_ms()
+
+	// memory: free -h -> "Mem:" line, 7th field is "available"
+	code, out, _ := exec("free -h")
+	if code == 0 {
+		lines := split(out, "\n")
+		for i := range lines {
+			if has_prefix(lines[i], "Mem:") {
+				fields := split(lines[i], " ")
+				// split on space leaves empty strings between consecutive spaces
+				clean := []string{}
+				for j := range fields {
+					if fields[j] != "" { clean = append(clean, fields[j]) }
+				}
+				if len(clean) >= 4 { m.memAvail = clean[3] }
+			}
+		}
+	}
+
+	// disk: df -h / -> second line, fields: fs total used avail use%
+	code, out, _ = exec("df -h /")
+	if code == 0 {
+		lines := split(out, "\n")
+		if len(lines) >= 2 {
+			fields := split(lines[1], " ")
+			clean := []string{}
+			for j := range fields {
+				if fields[j] != "" { clean = append(clean, fields[j]) }
+			}
+			if len(clean) >= 6 {
+				m.diskTotal = clean[1]
+				m.diskUsed = clean[2]
+				m.diskAvail = clean[3]
+				pct := clean[4]
+				pct = replace(pct, "%", "")
+				m.diskPct = parse_int(pct)
+			}
+		}
+	}
+
+	// inodes: df -i / -> second line, 5th field is IUse%
+	code, out, _ = exec("df -i /")
+	if code == 0 {
+		lines := split(out, "\n")
+		if len(lines) >= 2 {
+			fields := split(lines[1], " ")
+			clean := []string{}
+			for j := range fields {
+				if fields[j] != "" { clean = append(clean, fields[j]) }
+			}
+			if len(clean) >= 5 {
+				pct := clean[4]
+				pct = replace(pct, "%", "")
+				m.inodePct = parse_int(pct)
+			}
+		}
+	}
+
+	// cpu: uptime -> "load average: x, y, z"
+	code, out, _ = exec("uptime")
+	if code == 0 {
+		// "load average: " then "1.23, 4.56, 7.89"
+		if contains(out, "load average:") {
+			parts := split(out, "load average:")
+			if len(parts) >= 2 {
+				rest := trim(parts[1])
+				loads := split(rest, ",")
+				if len(loads) >= 3 {
+					m.load1 = parse_float(trim(loads[0]))
+					m.load5 = parse_float(trim(loads[1]))
+					m.load15 = parse_float(trim(loads[2]))
+				}
+			}
+		}
+	}
+
+	return m
+}
+
+// metrics_json serializes a Metrics struct to a JSON string.
+func metrics_json(m) {
+	j := "{"
+	j = j + "\"name\":\"" + m.name + "\","
+	j = j + "\"memory\":{\"available\":\"" + m.memAvail + "\"},"
+	j = j + "\"disk\":{\"available\":\"" + m.diskAvail + "\",\"used\":\"" + m.diskUsed + "\",\"total\":\"" + m.diskTotal + "\",\"usePercent\":" + str(m.diskPct) + ",\"iUsePercent\":" + str(m.inodePct) + "},"
+	j = j + "\"cpu\":{\"load1\":" + str(m.load1) + ",\"load5\":" + str(m.load5) + ",\"load15\":" + str(m.load15) + "},"
+	j = j + "\"timestamp\":" + str(m.timestamp)
+	j = j + "}"
+	return j
+}

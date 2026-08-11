@@ -1,0 +1,71 @@
+// app.src — CLI entry point. Dispatches server/client/version/help commands.
+
+func main() {
+	argv := args()
+	if len(argv) < 2 {
+		println("tinystats v1.0.0 — real-time system metrics dashboard")
+		println("")
+		println("Usage:")
+		println("  tinystats server --port <port>    Start the server (default: 9094)")
+		println("  tinystats client --name <name> --server <url>    Start a client")
+		println("  tinystats -v                       Show version")
+		return
+	}
+
+	cmd := argv[1]
+
+	if cmd == "-v" || cmd == "--version" {
+		println("tinystats 1.0.0")
+		return
+	}
+
+	if cmd == "help" || cmd == "--help" {
+		println("TinyStats - Real-time system metrics dashboard")
+		println("")
+		println("Usage:")
+		println("  tinystats server --port <port>    Start the server (default: 9094)")
+		println("  tinystats client --name <name> --server <url>    Start a client")
+		println("  tinystats -v                       Show version")
+		return
+	}
+
+	if cmd == "server" {
+		port := 9094
+		i := 2
+		while i < len(argv) {
+			if argv[i] == "--port" && i + 1 < len(argv) {
+				port = parse_int(argv[i + 1])
+				i = i + 2
+			} else {
+				i = i + 1
+			}
+		}
+		start_server(port)
+		return
+	}
+
+	if cmd == "client" {
+		name := ""
+		server := ""
+		i := 2
+		while i < len(argv) {
+			if argv[i] == "--name" && i + 1 < len(argv) {
+				name = argv[i + 1]
+				i = i + 2
+			} else if argv[i] == "--server" && i + 1 < len(argv) {
+				server = argv[i + 1]
+				i = i + 2
+			} else {
+				i = i + 1
+			}
+		}
+		if name == "" || server == "" {
+			println("Error: --name and --server are required for client")
+			return
+		}
+		start_client(name, server)
+		return
+	}
+
+	println("Unknown command: " + cmd)
+}

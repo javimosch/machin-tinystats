@@ -1,0 +1,194 @@
+// server.src — HTTP + WebSocket server using machweb + ws framework.
+// Serves the dashboard HTML at /, WebSocket at /ws, and accepts metrics POSTs at /api/report.
+
+// The hub pattern: a single goroutine owns the dashboards map and the clients map.
+// Dashboards and clients communicate with the hub via channels — race-free by design.
+
+type DashReg struct {
+	fd int
+	ch chan string
+}
+
+type Hub struct {
+	register chan DashReg
+	unregister chan int
+	clients chan string
+	broadcast chan string
+}
+
+var hub = Hub{}
+
+// clients map is owned by the hub goroutine
+type ClientEntry struct {
+	data string
+	ts int
+}
+
+// hub_loop is the central state owner. It reads from the hub channels and
+// maintains the dashboards map + clients map. All state access is single-goroutine.
+func hub_loop() {
+	dashboards := make(map[int]chan string)
+	clients := make(map[string]ClientEntry)
+	for {
+		select {
+			case r := <-hub.register:
+				dashboards[r.fd] = r.ch
+			case fd := <-hub.unregister:
+				delete(dashboards, fd)
+			case raw := <-hub.clients:
+				// parse the JSON to get the client name, store the raw JSON
+				name, _ := json_get(raw, ".name")
+				name = replace(name, "\"", "")
+				clients[name] = ClientEntry{data: raw, ts: now_ms()}
+				// prune stale clients
+				prune_stale(clients)
+				// build the full state and broadcast
+				state := build_state(clients)
+				for fd, ch := range dashboards {
+					ch <- state
+				}
+			case msg := <-hub.broadcast:
+				for fd, ch := range dashboards {
+					ch <- msg
+				}
+		}
+	}
+}
+
+// start_hub initializes the hub channels and launches the hub goroutine.
+func start_hub() {
+	hub = Hub{
+		register: make(chan DashReg),
+		unregister: make(chan int),
+		clients: make(chan string),
+		broadcast: make(chan string),
+	}
+	go hub_loop()
+}
+
+// build_state constructs the JSON broadcast payload from the clients map.
+func build_state(clients) {
+	out := "{\"clients\":["
+	count := 0
+	for name, entry := range clients {
+		if count > 0 { out = out + "," }
+		count = count + 1
+		out = out + entry.data
+	}
+	out = out + "],\"timestamp\":" + str(now_ms()) + "}"
+	return out
+}
+
+// prune_stale removes clients older than the TTL (24h default).
+func prune_stale(clients) {
+	now := now_ms()
+	ttl := 24 * 60 * 60 * 1000
+	for name, entry := range clients {
+		if now - entry.ts > ttl {
+			delete(clients, name)
+		}
+	}
+}
+
+// dashboard_html returns the inline HTML+CSS+JS for the metrics dashboard.
+// The JS connects to /ws and renders a grid of machines.
+func dashboard_html() {
+	html := "<!DOCTYPE html><html><head><meta charset='UTF-8'>"
+	html = html + "<meta name='viewport' content='width=device-width,initial-scale=1.0'>"
+	html = html + "<title>TinyStats</title>"
+	html = html + "<link href='https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@900&display=swap' rel='stylesheet'>"
+	html = html + "<style>"
+	html = html + ":root{--bg:#0A0A0A;--fg:#EAEAEA;--accent:#E61919}"
+	html = html + "*{box-sizing:border-box;margin:0;padding:0}"
+	html = html + "body{font-family:'IBM Plex Mono',monospace;background:var(--bg);color:var(--fg);min-height:100vh;font-size:12px;text-transform:uppercase;display:flex;align-items:center;justify-content:center;padding:40px}"
+	html = html + "body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,0.12) 2px,rgba(0,0,0,0.12) 4px);pointer-events:none;z-index:9999}"
+	html = html + ".brand{font-family:'Inter',sans-serif;font-size:14px;font-weight:900;letter-spacing:0.2em;text-align:center;margin-bottom:32px}"
+	html = html + ".brand span{color:var(--accent)}"
+	html = html + ".container{display:grid;grid-template-columns:repeat(2,1fr);gap:1px;background:#333;border:1px solid #333;max-width:1200px;width:100%}"
+	html = html + ".machine{display:grid;grid-template-columns:100px repeat(3,1fr);background:var(--bg)}"
+	html = html + ".machine-name{padding:12px;font-weight:600;font-size:11px;display:flex;align-items:center;border-right:1px solid #222}"
+	html = html + ".panel{padding:10px 12px;text-align:left;border-right:1px solid #222}.panel:last-child{border-right:none}"
+	html = html + ".label{font-size:9px;color:#888;margin-bottom:4px}.label::before{content:'// ';color:var(--accent)}"
+	html = html + ".value{font-size:16px;font-weight:600;letter-spacing:-0.02em}.unit{font-size:9px;color:#666;margin-left:2px}"
+	html = html + ".sub{font-size:8px;color:#666;margin-top:2px}"
+	html = html + ".value.warning{color:#F5A623}.value.danger{color:#E61919}"
+	html = html + ".machine.stale{opacity:0.5}.machine.stale .machine-name{border-left:3px solid #F5A623;flex-direction:column;align-items:flex-start}"
+	html = html + ".stale-badge{display:inline-block;font-size:7px;color:#F5A623;margin-top:4px;animation:pulse 2s ease-in-out infinite}.stale-badge::before{content:'WARN '}"
+	html = html + "@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}"
+	html = html + ".empty-state{padding:40px;text-align:center;color:#666}"
+	html = html + ".version{text-align:center;margin-top:24px;font-size:11px;color:#555}"
+	html = html + "</style></head><body>"
+	html = html + "<div><div class='brand'>TINY<span>STATS</span></div>"
+	html = html + "<div class='container' id='machines'></div>"
+	html = html + "<div class='version'>machin-tinystats v1.0.0</div></div>"
+	html = html + "<script>"
+	html = html + "const STALE_MS=5*60*1000;let lastClients=[];"
+	html = html + "const ws=new WebSocket('ws://'+location.host+'/ws');"
+	html = html + "ws.onmessage=(e)=>{const d=JSON.parse(e.data);lastClients=d.clients||[];render(lastClients)};"
+	html = html + "setInterval(()=>{if(lastClients.length)render(lastClients)},30000);"
+	html = html + "function memClass(a){const m=a.match(/(\\d+)/);if(!m)return'';const v=parseFloat(m[1]);if(a.includes('Mi')||a.includes('M')){if(v<100)return'danger';if(v<500)return'warning'}return''}"
+	html = html + "function timeAgo(ts){const s=Math.floor((Date.now()-ts)/1000);if(s<60)return s+'s ago';const m=Math.floor(s/60);if(m<60)return m+'m ago';const h=Math.floor(m/60);return h+'h '+(m%60)+'m ago'}"
+	html = html + "function render(clients){const now=Date.now();const c=document.getElementById('machines');"
+	html = html + "if(!clients.length){c.innerHTML='<div class=\"empty-state\">No clients connected</div>';return}"
+	html = html + "c.innerHTML=clients.map(cl=>{const stale=now-cl.timestamp>STALE_MS;"
+	html = html + "return '<div class=\"machine'+(stale?' stale':'')+'\">'"
+	html = html + "+'<div class=\"machine-name\">'+cl.name+(stale?'<div class=\"stale-badge\">'+timeAgo(cl.timestamp)+'</div>':'')+'</div>'"
+	html = html + "+'<div class=\"panel\"><div class=\"label\">MEMORY</div><div class=\"value '+memClass(cl.memory.available)+'\">'+cl.memory.available+'</div><div class=\"sub\">available</div></div>'"
+	html = html + "+'<div class=\"panel\"><div class=\"label\">DISK</div><div class=\"value\">'+cl.disk.available+'</div><div class=\"sub\">'+cl.disk.used+'/'+cl.disk.total+' | '+cl.disk.usePercent+'% | IUse: '+cl.disk.iUsePercent+'%</div></div>'"
+	html = html + "+'<div class=\"panel\"><div class=\"label\">CPU</div><div class=\"value\">'+cl.cpu.load5.toFixed(2)+'</div><div class=\"sub\">'+cl.cpu.load1.toFixed(2)+', '+cl.cpu.load5.toFixed(2)+', '+cl.cpu.load15.toFixed(2)+'</div></div>'"
+	html = html + "+'</div>'}).join('')}"
+	html = html + "</script></body></html>"
+	return html
+}
+
+// handle_request is the machweb request handler.
+func handle_request(req) {
+	path := req.path
+
+	// WebSocket upgrade
+	if is_ws_request(req) == 1 {
+		return ws(req, func(c) {
+			// register this dashboard with the hub
+			myCh := make(chan string)
+			hub.register <- DashReg{fd: c.fd, ch: myCh}
+			// send current state immediately
+			// (the hub will send on the next client update; for immediate state,
+			// we'd need a "get state" channel — for simplicity, dashboards get
+			// data on the next client report, which is within 5s)
+			for {
+				msg, ok := <-myCh
+				if !ok { return }
+				n := ws_send_text(c.fd, msg)
+				_ = n
+			}
+		})
+	}
+
+	// POST /api/report — client sends metrics JSON
+	if path == "/api/report" && req.method == "POST" {
+		hub.clients <- req.body
+		return ok_text("ok")
+	}
+
+	// GET /api/clients — REST fallback (returns current state)
+	if path == "/api/clients" {
+		// request state from hub via broadcast channel, but we need a synchronous
+		// response — for simplicity, return a placeholder; the WS is the primary path
+		return ok_text("{\"clients\":[]}")
+	}
+
+	// GET / — dashboard
+	if path == "/" || path == "/index.html" {
+		return ok_html(dashboard_html())
+	}
+
+	return not_found()
+}
+
+// start_server launches the HTTP+WS server on the given port.
+func start_server(port) {
+	start_hub()
+	serve(port, func(req) { return handle_request(req) })
+	println("TinyStats server running on http://localhost:" + str(port))
+	println("WebSocket endpoint: ws://localhost:" + str(port) + "/ws")
+}

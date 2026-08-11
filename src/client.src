@@ -1,0 +1,22 @@
+// client.src — connects to a TinyStats server, collects metrics every 5s,
+// and POSTs them as JSON via http_request. Reconnects on failure.
+
+func start_client(name, serverUrl) {
+	println("Connecting to " + serverUrl + "...")
+	reportUrl := serverUrl + "/api/report"
+	headers := []string{"Content-Type: application/json"}
+
+	while true {
+		m := collect_metrics(name)
+		j := metrics_json(m)
+		code, body, err := http_request("POST", reportUrl, headers, j)
+		if err != "" {
+			println("Report failed: " + err + " — retrying in 5s...")
+		} else {
+			if code != 200 {
+				println("Server returned " + str(code) + ": " + body + " — retrying in 5s...")
+			}
+		}
+		sleep(5000)
+	}
+}
