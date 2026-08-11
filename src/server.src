@@ -14,6 +14,7 @@ type Hub struct {
 	unregister chan int
 	clients chan string
 	broadcast chan string
+	getState chan chan string
 }
 
 var hub = Hub{}
@@ -51,6 +52,8 @@ func hub_loop() {
 				for fd, ch := range dashboards {
 					ch <- msg
 				}
+			case reply := <-hub.getState:
+				reply <- build_state(clients)
 		}
 	}
 }
@@ -62,6 +65,7 @@ func start_hub() {
 		unregister: make(chan int),
 		clients: make(chan string),
 		broadcast: make(chan string),
+		getState: make(chan chan string),
 	}
 	go hub_loop()
 }
@@ -152,9 +156,10 @@ func handle_request(req) {
 			myCh := make(chan string)
 			hub.register <- DashReg{fd: c.fd, ch: myCh}
 			// send current state immediately
-			// (the hub will send on the next client update; for immediate state,
-			// we'd need a "get state" channel — for simplicity, dashboards get
-			// data on the next client report, which is within 5s)
+			reply := make(chan string)
+			hub.getState <- reply
+			initial, _ := <-reply
+			ws_send_text(c.fd, initial)
 			for {
 				msg, ok := <-myCh
 				if !ok { return }
@@ -172,9 +177,10 @@ func handle_request(req) {
 
 	// GET /api/clients — REST fallback (returns current state)
 	if path == "/api/clients" {
-		// request state from hub via broadcast channel, but we need a synchronous
-		// response — for simplicity, return a placeholder; the WS is the primary path
-		return ok_text("{\"clients\":[]}")
+		reply := make(chan string)
+		hub.getState <- reply
+		state, _ := <-reply
+		return ok_json(state)
 	}
 
 	// GET / — dashboard
