@@ -3,11 +3,12 @@
 func main() {
 	argv := args()
 	if len(argv) < 2 {
-		println("tinystats v1.0.1 — real-time system metrics dashboard")
+		println("tinystats v1.1.0 — real-time system metrics dashboard + remotecmd sidecar")
 		println("")
 		println("Usage:")
 		println("  tinystats server --port <port>    Start the server (default: 9094)")
 		println("  tinystats client --name <name> --server <url>    Start a client")
+		println("  tinystats sidecar --port <port>    Start the remotecmd pairing sidecar (default: 9096)")
 		println("  tinystats -v                       Show version")
 		return
 	}
@@ -15,16 +16,17 @@ func main() {
 	cmd := argv[1]
 
 	if cmd == "-v" || cmd == "--version" {
-		println("tinystats 1.0.1")
+		println("tinystats 1.1.0")
 		return
 	}
 
 	if cmd == "help" || cmd == "--help" {
-		println("TinyStats - Real-time system metrics dashboard")
+		println("TinyStats - Real-time system metrics dashboard + remotecmd sidecar")
 		println("")
 		println("Usage:")
 		println("  tinystats server --port <port>    Start the server (default: 9094)")
 		println("  tinystats client --name <name> --server <url>    Start a client")
+		println("  tinystats sidecar --port <port>    Start the remotecmd pairing sidecar (default: 9096)")
 		println("  tinystats -v                       Show version")
 		return
 	}
@@ -64,6 +66,21 @@ func main() {
 			return
 		}
 		start_client(name, server)
+		return
+	}
+
+	if cmd == "sidecar" {
+		port := 9096
+		i := 2
+		while i < len(argv) {
+			if argv[i] == "--port" && i + 1 < len(argv) {
+				port = parse_int(argv[i + 1])
+				i = i + 2
+			} else {
+				i = i + 1
+			}
+		}
+		start_sidecar(port)
 		return
 	}
 

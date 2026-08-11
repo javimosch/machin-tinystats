@@ -1,9 +1,9 @@
 # TinyStats
 
 <p align="center">
-  <b>Real-time system metrics dashboard — 71 KB binary</b><br/>
+  <b>Real-time system metrics dashboard + remotecmd sidecar — 79 KB binary</b><br/>
   A rewrite of <a href="https://github.com/javimosch/ministats">MiniStats</a> in Machin/MFL.<br/>
-  Same features, 1400× smaller binary.
+  Same features, 1300× smaller binary. Now with built-in remote management.
 </p>
 
 <p align="center">
@@ -19,11 +19,12 @@ TinyStats is the same app rebuilt in [Machin/MFL](https://github.com/javimosch/m
 
 | | MiniStats (Bun) | TinyStats (Machin) |
 |---|---|---|
-| Binary size | 99 MB | **71 KB** |
-| Compression | 25 MB (.xz) | 71 KB (already tiny) |
+| Binary size | 99 MB | **79 KB** |
+| Compression | 25 MB (.xz) | 79 KB (already tiny) |
 | Runtime bundled | yes (Bun) | no (pure C output) |
 | Dependencies | libc, libm | libc, libm |
-| Source lines | ~300 TS | ~250 MFL |
+| Source lines | ~300 TS | ~530 MFL |
+| Remote management | no | yes (remotecmd sidecar) |
 
 Same architecture: one server, N clients, WebSocket broadcast, no database. Same dashboard UI. Same commands.
 
@@ -39,6 +40,7 @@ Same architecture: one server, N clients, WebSocket broadcast, no database. Same
 - Stale client detection and pruning
 - HTTP POST fallback for clients behind firewalls
 - IBM Plex Mono + scanline overlay UI
+- **Remotecmd sidecar** — provision remote shell access without SSH (v1.1.0+)
 
 ## Quick Start
 
@@ -69,9 +71,42 @@ Done. Metrics appear instantly.
 ```bash
 tinystats server --port <port>                    # start the dashboard server
 tinystats client --name <name> --server <url>     # connect a machine
+tinystats sidecar --port <port>                   # start the remotecmd pairing sidecar (default: 9096)
 tinystats -v                                      # show version
 tinystats help                                    # usage
 ```
+
+## Remotecmd Sidecar (v1.1.0+)
+
+The sidecar is a tiny HTTP endpoint (`POST /__rcmd/pair`) that provisions a [remotecmd](https://github.com/javimosch/remotecmd) connection on the machine — no SSH access needed. This lets you remotely manage tinystats clients behind firewalls or NAT.
+
+### How it works
+
+```
+1. rcmd pair listen --name <target> --require-activation-key  → generates pair code
+2. POST /__rcmd/pair {relayUrl, code, activationKey, name}    → sidecar downloads rcmd, starts daemon
+3. rcmd exec --target <target> --cmd 'hostname'               → remote shell access
+```
+
+### Start the sidecar
+
+```bash
+# Default port 9096, allowlist *.intrane.fr
+tinystats sidecar --port 9096
+
+# Custom allowlist (comma-separated patterns)
+RCMD_ALLOWED_RELAYS="*.intrane.fr,92.113.145.178" tinystats sidecar --port 9096
+```
+
+### Security
+
+| Layer | What | Where |
+|---|---|---|
+| Relay URL allowlist | `RCMD_ALLOWED_RELAYS` env var (default `*.intrane.fr`) | sidecar |
+| Activation key | enforced by the relay | relay |
+| Pair code | single-use, 300s TTL | relay |
+
+The sidecar downloads the `rcmd` binary from GitHub releases (cached in `$TMPDIR/.rcmd-cache/`), runs `pair accept`, then spawns the daemon detached — it survives the HTTP request and runs in the background.
 
 ## Build from Source
 

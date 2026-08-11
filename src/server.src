@@ -124,7 +124,7 @@ func dashboard_html() {
 	html = html + "</style></head><body>"
 	html = html + "<div><div class='brand'>TINY<span>STATS</span></div>"
 	html = html + "<div class='container' id='machines'></div>"
-	html = html + "<div class='version'>machin-tinystats v1.0.1</div></div>"
+	html = html + "<div class='version'>machin-tinystats v1.1.0</div></div>"
 	html = html + "<script>"
 	html = html + "const STALE_MS=5*60*1000;let lastClients=[];"
 	html = html + "const wsProto=location.protocol==='https:'?'wss:':'ws:';const ws=new WebSocket(wsProto+'//'+location.host+'/ws');"

@@ -13,6 +13,7 @@ $MACHIN encode \
   src/metrics.src \
   src/server.src \
   src/client.src \
+  src/sidecar.src \
   src/app.src \
   > "$OUT.mfl"
 
