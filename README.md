@@ -1,32 +1,41 @@
 # TinyStats
 
 <p align="center">
-  <b>Real-time system metrics dashboard + remotecmd sidecar — 79 KB binary</b><br/>
-  A rewrite of <a href="https://github.com/javimosch/ministats">MiniStats</a> in Machin/MFL.<br/>
-  Same features, 1300× smaller binary. Now with built-in remote management.
+  <b>Ultra-lightweight system metrics for resource-constrained devices — 79 KB binary, 760 KB RSS</b><br/>
+  Real-time multi-machine monitoring + remotecmd sidecar, built in Machin/MFL.
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/github/license/javimosch/machin-tinystats" />
   <img src="https://img.shields.io/github/stars/javimosch/machin-tinystats" />
+  <img src="https://img.shields.io/badge/binary-79KB-red" />
+  <img src="https://img.shields.io/badge/RSS-760KB-red" />
 </p>
 
 ## Why?
 
-[MiniStats](https://github.com/javimosch/ministats) is a real-time multi-machine metrics dashboard built with Bun/TypeScript. It works, but the compiled binary is **99 MB** because it bundles the entire Bun runtime.
+Most monitoring tools are heavy. Netdata uses 50-150 MB RSS. Datadog's agent is 100+ MB. Even lightweight alternatives assume you have gigabytes of RAM to spare.
 
-TinyStats is the same app rebuilt in [Machin/MFL](https://github.com/javimosch/machin) — a language that compiles through C to native code. The result:
+**TinyStats is for machines where every megabyte counts:**
 
-| | MiniStats (Bun) | TinyStats (Machin) |
-|---|---|---|
-| Binary size | 99 MB | **79 KB** |
-| Compression | 25 MB (.xz) | 79 KB (already tiny) |
-| Runtime bundled | yes (Bun) | no (pure C output) |
-| Dependencies | libc, libm | libc, libm |
-| Source lines | ~300 TS | ~530 MFL |
-| Remote management | no | yes (remotecmd sidecar) |
+- Routers and OpenWrt devices (128 MB RAM)
+- Raspberry Pi Zero and other SBCs (512 MB RAM)
+- Cheap VPS fleet ($2/mo instances with 512 MB RAM)
+- Edge computing devices and IoT gateways
+- Containers where agent overhead matters
 
-Same architecture: one server, N clients, WebSocket broadcast, no database. Same dashboard UI. Same commands.
+| | Netdata | Datadog Agent | **TinyStats** |
+|---|---|---|---|
+| Binary size | 25 MB | 100+ MB | **79 KB** |
+| RSS (resident memory) | 50-150 MB | 100-300 MB | **760 KB** |
+| Runtime | bundled | bundled | none (pure C) |
+| Dependencies | libc, libm, libuv | libc, many | libc, libm |
+| History/alerts | yes | yes | no (live only) |
+| Remote management | no | no | yes (sidecar) |
+
+TinyStats trades history and alerts for **100× lower resource usage**. It shows you what's happening right now across all your machines, and lets you remotely manage them — without paying the memory tax.
+
+> Originally a rewrite of [MiniStats](https://github.com/javimosch/ministats) (Bun/TypeScript, 99 MB binary). Same architecture, 1300× smaller.
 
 ## Screenshot
 
@@ -140,11 +149,13 @@ The client uses `http_request()` (Machin's built-in HTTP client) to POST metrics
 
 ## Philosophy
 
-Same as MiniStats: simplicity over features, speed over completeness, usability over configurability. If you need long-term metrics, alerts, and analytics → use Prometheus + Grafana. If you just want to see what's happening now → use TinyStats.
+**Trade features for footprint.** TinyStats deliberately doesn't do history, alerts, log aggregation, APM, or tracing. What it does is run on machines where nothing else fits — and give you a live view plus remote shell access when you need to fix something.
+
+If you need long-term metrics, alerts, and analytics → use Prometheus + Grafana or Netdata (if your machines have the RAM). If you need to see what's happening right now on devices that can't spare 100 MB → use TinyStats.
 
 ## Why Machin?
 
-Machin compiles MFL to C, then to native code. No runtime, no garbage collector, no bundled interpreter. The binary is just C compiled with `cc -O2`. That's why it's 71 KB instead of 99 MB — there's nothing in the binary except the actual program logic and the libc calls it needs.
+Machin compiles MFL to C, then to native code. No runtime, no garbage collector, no bundled interpreter. The binary is just C compiled with `cc -O2`. That's why it's 79 KB instead of 99 MB — there's nothing in the binary except the actual program logic and the libc calls it needs.
 
 ## Contributing
 
