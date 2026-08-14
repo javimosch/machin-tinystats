@@ -7,14 +7,24 @@ func start_client(name, serverUrl) {
 	headers := []string{"Content-Type: application/json"}
 
 	while true {
-		m := collect_metrics(name)
-		j := metrics_json(m)
-		code, body, err := http_request("POST", reportUrl, headers, j)
-		if err != "" {
-			println("Report failed: " + err + " — retrying in 5s...")
-		} else {
-			if code != 200 {
-				println("Server returned " + str(code) + ": " + body + " — retrying in 5s...")
+		// Wrap the loop body in arena {} so collect_metrics + metrics_json
+		// transients (4x exec() output strings, split() substrings, the
+		// parts slice + join result) are freed every iteration. The client
+		// runs in the main goroutine whose arena is never freed, so without
+		// this the per-iteration garbage piles up permanently — measured
+		// 47-180 MB/day across the fleet (mikavm3 hit 541 MB in 3 days).
+		// http_request is NOT an escape: it serializes the body out over the
+		// socket. machin check confirms ARENA001/ARENA002 clean.
+		arena {
+			m := collect_metrics(name)
+			j := metrics_json(m)
+			code, body, err := http_request("POST", reportUrl, headers, j)
+			if err != "" {
+				println("Report failed: " + err + " — retrying in 5s...")
+			} else {
+				if code != 200 {
+					println("Server returned " + str(code) + ": " + body + " — retrying in 5s...")
+				}
 			}
 		}
 		sleep(5000)
