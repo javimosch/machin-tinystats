@@ -35,6 +35,13 @@ func hub_loop() {
 			case r := <-hub.register:
 				dashboards[r.fd] = r.ch
 			case fd := <-hub.unregister:
+				// close the channel first so the dashboard's blocked `<-myCh`
+				// receive wakes with ok==0 and its goroutine returns; then drop
+				// the entry. Without this, dead dashboards accumulate forever
+				// (the map is arena-backed and never reclaimed).
+				if has(dashboards, fd) {
+					close(dashboards[fd])
+				}
 				delete(dashboards, fd)
 			case raw := <-hub.clients:
 				// parse the JSON to get the client name, store the raw JSON
@@ -71,16 +78,25 @@ func start_hub() {
 }
 
 // build_state constructs the JSON broadcast payload from the clients map.
+// Builds via a []string + join(parts, "") so the whole payload is ONE arena
+// allocation. The old `out = out + entry.data` loop chained mfl_cat, which
+// recopied the growing prefix every iteration and left every intermediate as
+// permanent arena garbage (~22 KB per broadcast x ~2/s = ~1.7 GB in 14 h,
+// never freed because the hub goroutine never exits). join() sizes the total
+// up front and allocates once.
 func build_state(clients) {
-	out := "{\"clients\":["
+	parts := []string{}
+	parts = append(parts, "{\"clients\":[")
 	count := 0
 	for name, entry := range clients {
-		if count > 0 { out = out + "," }
+		if count > 0 { parts = append(parts, ",") }
 		count = count + 1
-		out = out + entry.data
+		parts = append(parts, entry.data)
 	}
-	out = out + "],\"timestamp\":" + str(now_ms()) + "}"
-	return out
+	parts = append(parts, "],\"timestamp\":")
+	parts = append(parts, str(now_ms()))
+	parts = append(parts, "}")
+	return join(parts, "")
 }
 
 // prune_stale removes clients older than the TTL (24h default).
@@ -162,9 +178,9 @@ func handle_request(req) {
 			ws_send_text(c.fd, initial)
 			for {
 				msg, ok := <-myCh
-				if !ok { return }
+				if !ok { hub.unregister <- c.fd  return }
 				n := ws_send_text(c.fd, msg)
-				_ = n
+				if n <= 0 { hub.unregister <- c.fd  return }
 			}
 		})
 	}
