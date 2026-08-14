@@ -44,23 +44,37 @@ func hub_loop() {
 				}
 				delete(dashboards, fd)
 			case raw := <-hub.clients:
-				// parse the JSON to get the client name, store the raw JSON
+				// parse the JSON to get the client name, store the raw JSON.
+				// Map write stays OUTSIDE the arena block: mfl_map_set allocates
+				// new entries via mfl_alloc (the CURRENT arena), so a new client
+				// entry created inside a block would be freed when the block ends
+				// and dangle. The goroutine's own arena is stable for the loop's
+				// lifetime, so entries live as long as the hub.
 				name, _ := json_get(raw, ".name")
 				name = replace(name, "\"", "")
 				clients[name] = ClientEntry{data: raw, ts: now_ms()}
-				// prune stale clients
 				prune_stale(clients)
-				// build the full state and broadcast
-				state := build_state(clients)
-				for fd, ch := range dashboards {
-					ch <- state
+				// build the full state and broadcast. Wrapped in arena {} so the
+				// build_state transients (parts slice + join result, ~2.4 KB) are
+				// freed every iteration instead of piling up as permanent arena
+				// garbage (~456 MB/day at 11 clients / 5s). ch <- state is NOT an
+				// escape: channel sends deep-copy (freeze/thaw) across goroutines.
+				arena {
+					state := build_state(clients)
+					for fd, ch := range dashboards {
+						ch <- state
+					}
 				}
 			case msg := <-hub.broadcast:
-				for fd, ch := range dashboards {
-					ch <- msg
+				arena {
+					for fd, ch := range dashboards {
+						ch <- msg
+					}
 				}
 			case reply := <-hub.getState:
-				reply <- build_state(clients)
+				arena {
+					reply <- build_state(clients)
+				}
 		}
 	}
 }
