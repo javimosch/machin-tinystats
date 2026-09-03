@@ -85,6 +85,18 @@ tinystats -v                                      # show version
 tinystats help                                    # usage
 ```
 
+## Building
+
+```bash
+./build.sh                 # native binary for the host architecture
+./scripts/build-arm64.sh   # linux/arm64 release asset, cross-compiled (needs zig)
+```
+
+The arm64 cross-build needs an aarch64 OpenSSL, which zig does not ship;
+`build-arm64.sh` unpacks the matching Ubuntu `.debs` into a throwaway sysroot
+rather than adding a foreign dpkg architecture to the build host. It is
+reproducible — repeat runs produce a byte-identical binary.
+
 ## Leak guard (systemd)
 
 TinyStats sits at ~4 MB RSS. If it ever climbs past that, something is wrong.
