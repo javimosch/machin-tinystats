@@ -85,6 +85,28 @@ tinystats -v                                      # show version
 tinystats help                                    # usage
 ```
 
+## Leak guard (systemd)
+
+TinyStats sits at ~4 MB RSS. If it ever climbs past that, something is wrong.
+`scripts/systemd/` holds a drop-in that caps the process and recycles it daily:
+
+```bash
+sudo mkdir -p /etc/systemd/system/tinystats-client.service.d
+sudo cp scripts/systemd/tinystats-client.service.d-zz-watchdog.conf \
+  /etc/systemd/system/tinystats-client.service.d/zz-watchdog.conf
+sudo systemctl daemon-reload && sudo systemctl restart tinystats-client
+```
+
+`MemoryMax=64M` (128M for the server) lets the cgroup OOM-kill a runaway long
+before it costs the host anything, and `RuntimeMaxSec=86400` recycles the unit
+every 24h as a backstop for a leak too slow to trip the cap. Both rely on
+`Restart=always`, which the shipped units already set. Requires systemd 229+
+and the cgroup memory controller.
+
+For hosts running the client under cron instead of systemd, `scripts/tinystats-watchdog.sh`
+applies the same two thresholds from userspace and respawns the client if it is
+not running. Run it every 5 minutes from cron.
+
 ## Remotecmd Sidecar (v1.1.0+)
 
 The sidecar is a tiny HTTP endpoint (`POST /__rcmd/pair`) that provisions a [remotecmd](https://github.com/javimosch/remotecmd) connection on the machine — no SSH access needed. This lets you remotely manage tinystats clients behind firewalls or NAT.
