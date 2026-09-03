@@ -22,6 +22,10 @@ func collect_metrics(name) {
 	m.timestamp = now_ms()
 
 	// memory: free -h -> "Mem:" line, 7th field is "available"
+	// (total used free shared buff/cache available). Index 6, NOT 3 — index 3
+	// is "free", which on Linux excludes reclaimable page cache and reads as
+	// alarmingly low on any box that has been up for a while. Fall back to
+	// "free" only on layouts that lack the available column (very old procps).
 	code, out, _ := exec("free -h")
 	if code == 0 {
 		lines := split(out, "\n")
@@ -33,7 +37,11 @@ func collect_metrics(name) {
 				for j := range fields {
 					if fields[j] != "" { clean = append(clean, fields[j]) }
 				}
-				if len(clean) >= 4 { m.memAvail = clean[3] }
+				if len(clean) >= 7 {
+					m.memAvail = clean[6]
+				} else {
+					if len(clean) >= 4 { m.memAvail = clean[3] }
+				}
 			}
 		}
 	}

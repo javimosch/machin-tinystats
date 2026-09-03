@@ -3,7 +3,7 @@
 func main() {
 	argv := args()
 	if len(argv) < 2 {
-		println("tinystats v1.1.0 — real-time system metrics dashboard + remotecmd sidecar")
+		println("tinystats v1.1.2 — real-time system metrics dashboard + remotecmd sidecar")
 		println("")
 		println("Usage:")
 		println("  tinystats server --port <port>    Start the server (default: 9094)")
@@ -16,7 +16,7 @@ func main() {
 	cmd := argv[1]
 
 	if cmd == "-v" || cmd == "--version" {
-		println("tinystats 1.1.0")
+		println("tinystats 1.1.2")
 		return
 	}
 
