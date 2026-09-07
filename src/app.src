@@ -3,12 +3,12 @@
 func main() {
 	argv := args()
 	if len(argv) < 2 {
-		println("tinystats v1.1.2 — real-time system metrics dashboard + remotecmd sidecar")
+		println("tinystats v1.2.0 — real-time system metrics dashboard")
 		println("")
 		println("Usage:")
 		println("  tinystats server --port <port>    Start the server (default: 9094)")
 		println("  tinystats client --name <name> --server <url>    Start a client")
-		println("  tinystats sidecar --port <port>    Start the remotecmd pairing sidecar (default: 9096)")
+		println("  tinystats sidecar --port <port>    Start the remotecmd pairing sidecar (opt-in, default: 9096)")
 		println("  tinystats -v                       Show version")
 		return
 	}
@@ -16,17 +16,17 @@ func main() {
 	cmd := argv[1]
 
 	if cmd == "-v" || cmd == "--version" {
-		println("tinystats 1.1.2")
+		println("tinystats 1.2.0")
 		return
 	}
 
 	if cmd == "help" || cmd == "--help" {
-		println("TinyStats - Real-time system metrics dashboard + remotecmd sidecar")
+		println("TinyStats - Real-time system metrics dashboard")
 		println("")
 		println("Usage:")
 		println("  tinystats server --port <port>    Start the server (default: 9094)")
 		println("  tinystats client --name <name> --server <url>    Start a client")
-		println("  tinystats sidecar --port <port>    Start the remotecmd pairing sidecar (default: 9096)")
+		println("  tinystats sidecar --port <port>    Start the remotecmd pairing sidecar (opt-in, default: 9096)")
 		println("  tinystats -v                       Show version")
 		return
 	}

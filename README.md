@@ -2,7 +2,7 @@
 
 <p align="center">
   <b>Ultra-lightweight system metrics for resource-constrained devices — 79 KB binary, 760 KB RSS</b><br/>
-  Real-time multi-machine monitoring + remotecmd sidecar, built in Machin/MFL.
+  Real-time multi-machine monitoring, built in Machin/MFL.
 </p>
 
 <p align="center">
@@ -31,7 +31,7 @@ Most monitoring tools are heavy. Netdata uses 50-150 MB RSS. Datadog's agent is 
 | Runtime | bundled | bundled | none (pure C) |
 | Dependencies | libc, libm, libuv | libc, many | libc, libm |
 | History/alerts | yes | yes | no (live only) |
-| Remote management | no | no | yes (sidecar) |
+| Remote management | no | no | yes (sidecar, opt-in) |
 
 TinyStats trades history and alerts for **100× lower resource usage**. It shows you what's happening right now across all your machines, and lets you remotely manage them — without paying the memory tax.
 
@@ -49,7 +49,7 @@ TinyStats trades history and alerts for **100× lower resource usage**. It shows
 - Stale client detection and pruning
 - HTTP POST fallback for clients behind firewalls
 - IBM Plex Mono + scanline overlay UI
-- **Remotecmd sidecar** — provision remote shell access without SSH (v1.1.0+)
+- **Remotecmd sidecar** — provision remote shell access without SSH (v1.1.0+, **opt-in, disabled by default**)
 
 ## Quick Start
 
@@ -80,15 +80,20 @@ Done. Metrics appear instantly.
 ```bash
 tinystats server --port <port>                    # start the dashboard server
 tinystats client --name <name> --server <url>     # connect a machine
-tinystats sidecar --port <port>                   # start the remotecmd pairing sidecar (default: 9096)
+tinystats sidecar --port <port>                   # start the remotecmd pairing sidecar (opt-in, default: 9096)
 tinystats -v                                      # show version
 tinystats help                                    # usage
 ```
 
+> The `sidecar` command is present in every binary, but in the default build it
+> only prints a "disabled" message. The sidecar code is **not compiled in by
+> default** — see [Remotecmd Sidecar](#remotecmd-sidecar-opt-in) below.
+
 ## Building
 
 ```bash
-./build.sh                 # native binary for the host architecture
+./build.sh                 # native binary for the host architecture (sidecar excluded)
+WITH_SIDECAR=1 ./build.sh  # same, but with the remotecmd sidecar compiled in
 ./scripts/build-arm64.sh   # linux/arm64 release asset, cross-compiled (needs zig)
 ```
 
@@ -119,7 +124,23 @@ For hosts running the client under cron instead of systemd, `scripts/tinystats-w
 applies the same two thresholds from userspace and respawns the client if it is
 not running. Run it every 5 minutes from cron.
 
-## Remotecmd Sidecar (v1.1.0+)
+## Remotecmd Sidecar (opt-in)
+
+> **Disabled by default.** The sidecar downloads and executes a remote binary
+> (`rcmd`) from GitHub releases at runtime and opens an outbound relay
+> connection. That behavior — download-and-execute plus outbound network — is
+> exactly what data-exfiltration backdoors look like, so the sidecar is **not
+> compiled into the default binary**. Anyone auditing the default build or the
+> shipped release binaries will find no such code. The `tinystats sidecar`
+> command still exists in every binary, but in the default build it only prints
+> a message explaining how to opt in.
+>
+> To use the sidecar, build from source with `WITH_SIDECAR=1`:
+
+```bash
+WITH_SIDECAR=1 ./build.sh
+tinystats sidecar --port 9096
+```
 
 The sidecar is a tiny HTTP endpoint (`POST /__rcmd/pair`) that provisions a [remotecmd](https://github.com/javimosch/remotecmd) connection on the machine — no SSH access needed. This lets you remotely manage tinystats clients behind firewalls or NAT.
 
@@ -132,6 +153,9 @@ The sidecar is a tiny HTTP endpoint (`POST /__rcmd/pair`) that provisions a [rem
 ```
 
 ### Start the sidecar
+
+> Requires a `WITH_SIDECAR=1` build. The default binary prints a "disabled"
+> message instead of starting the endpoint.
 
 ```bash
 # Default port 9096, allowlist *.intrane.fr
@@ -183,7 +207,7 @@ The client uses `http_request()` (Machin's built-in HTTP client) to POST metrics
 
 ## Philosophy
 
-**Trade features for footprint.** TinyStats deliberately doesn't do history, alerts, log aggregation, APM, or tracing. What it does is run on machines where nothing else fits — and give you a live view plus remote shell access when you need to fix something.
+**Trade features for footprint.** TinyStats deliberately doesn't do history, alerts, log aggregation, APM, or tracing. What it does is run on machines where nothing else fits — and give you a live view (plus optional remote shell access via the opt-in sidecar when you need to fix something).
 
 If you need long-term metrics, alerts, and analytics → use Prometheus + Grafana or Netdata (if your machines have the RAM). If you need to see what's happening right now on devices that can't spare 100 MB → use TinyStats.
 

@@ -1,0 +1,22 @@
+// sidecar-stub.src — placeholder used when the sidecar is not compiled in.
+//
+// The remotecmd sidecar downloads and executes a remote binary at runtime and
+// opens an outbound relay connection. To avoid any appearance of hidden
+// data-exfiltration functionality, it is NOT compiled into the default binary.
+// Build with WITH_SIDECAR=1 to include the real sidecar (src/sidecar.src).
+//
+// This stub keeps app.src's `tinystats sidecar` command callable so the binary
+// always has a start_sidecar symbol, but prints a clear "disabled" message.
+
+func start_sidecar(port) {
+	println("Sidecar disabled by default.")
+	println("")
+	println("The remotecmd sidecar is an opt-in component that downloads and runs a")
+	println("remote binary and opens an outbound relay connection. It is excluded from")
+	println("the default build so the shipped binary contains no such functionality.")
+	println("")
+	println("To enable, rebuild from source with the sidecar included:")
+	println("  WITH_SIDECAR=1 ./build.sh")
+	println("")
+	println("Then: tinystats sidecar --port <port>")
+}
